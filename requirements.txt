@@ -1,4 +1,3 @@
 streamlit
+yfinance
 pandas
-yt-dlp>=2024.03.10
-moviepy
