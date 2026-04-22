@@ -1,151 +1,162 @@
 import streamlit as st
-import pandas as pd
-import math
-from pathlib import Path
+import yt_dlp
+import os
+import time
+from moviepy.video.io.VideoFileClip import VideoFileClip
 
-# Set the title and favicon that appear in the Browser's tab bar.
-st.set_page_config(
-    page_title='GDP dashboard',
-    page_icon=':earth_americas:', # This is an emoji shortcode. Could be a URL too.
-)
+# --- KONFIGURASI HALAMAN & CSS ---
+st.set_page_config(page_title="AutoClip AI | Viral Shorts", page_icon="✂️", layout="wide")
 
-# -----------------------------------------------------------------------------
-# Declare some useful functions.
+st.markdown("""
+<style>
+    .stButton > button {
+        width: 100%;
+        background-color: #FF4B4B;
+        color: white;
+        border-radius: 8px;
+        font-weight: 600;
+        padding: 0.5rem 1rem;
+        border: none;
+        transition: all 0.3s ease;
+    }
+    .stButton > button:hover {
+        background-color: #ff3333;
+    }
+    .result-card {
+        background-color: #1E1E1E;
+        padding: 20px;
+        border-radius: 10px;
+        border: 1px solid #333;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-@st.cache_data
-def get_gdp_data():
-    """Grab GDP data from a CSV file.
+# --- FUNGSI BACKEND UTAMA ---
+def download_youtube_video(url, output_filename="raw_video.mp4"):
+    """Mengunduh video dari YouTube dalam format terbaik yang tersedia."""
+    if os.path.exists(output_filename):
+        os.remove(output_filename) # Hapus file lama jika ada
+        
+    ydl_opts = {
+        'format': 'best',
+        'outtmpl': output_filename,
+        'quiet': True,
+        'no_warnings': True
+    }
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+        return output_filename
+    except Exception as e:
+        raise Exception(f"Gagal mengunduh video: {e}")
 
-    This uses caching to avoid having to read the file every time. If we were
-    reading from an HTTP endpoint instead of a file, it's a good idea to set
-    a maximum age to the cache with the TTL argument: @st.cache_data(ttl='1d')
-    """
-
-    # Instead of a CSV on disk, you could read from an HTTP endpoint here too.
-    DATA_FILENAME = Path(__file__).parent/'data/gdp_data.csv'
-    raw_gdp_df = pd.read_csv(DATA_FILENAME)
-
-    MIN_YEAR = 1960
-    MAX_YEAR = 2022
-
-    # The data above has columns like:
-    # - Country Name
-    # - Country Code
-    # - [Stuff I don't care about]
-    # - GDP for 1960
-    # - GDP for 1961
-    # - GDP for 1962
-    # - ...
-    # - GDP for 2022
-    #
-    # ...but I want this instead:
-    # - Country Name
-    # - Country Code
-    # - Year
-    # - GDP
-    #
-    # So let's pivot all those year-columns into two: Year and GDP
-    gdp_df = raw_gdp_df.melt(
-        ['Country Code'],
-        [str(x) for x in range(MIN_YEAR, MAX_YEAR + 1)],
-        'Year',
-        'GDP',
-    )
-
-    # Convert years from string to integers
-    gdp_df['Year'] = pd.to_numeric(gdp_df['Year'])
-
-    return gdp_df
-
-gdp_df = get_gdp_data()
-
-# -----------------------------------------------------------------------------
-# Draw the actual page
-
-# Set the title that appears at the top of the page.
-'''
-# :earth_americas: GDP dashboard
-
-Browse GDP data from the [World Bank Open Data](https://data.worldbank.org/) website. As you'll
-notice, the data only goes to 2022 right now, and datapoints for certain years are often missing.
-But it's otherwise a great (and did I mention _free_?) source of data.
-'''
-
-# Add some spacing
-''
-''
-
-min_value = gdp_df['Year'].min()
-max_value = gdp_df['Year'].max()
-
-from_year, to_year = st.slider(
-    'Which years are you interested in?',
-    min_value=min_value,
-    max_value=max_value,
-    value=[min_value, max_value])
-
-countries = gdp_df['Country Code'].unique()
-
-if not len(countries):
-    st.warning("Select at least one country")
-
-selected_countries = st.multiselect(
-    'Which countries would you like to view?',
-    countries,
-    ['DEU', 'FRA', 'GBR', 'BRA', 'MEX', 'JPN'])
-
-''
-''
-''
-
-# Filter the data
-filtered_gdp_df = gdp_df[
-    (gdp_df['Country Code'].isin(selected_countries))
-    & (gdp_df['Year'] <= to_year)
-    & (from_year <= gdp_df['Year'])
-]
-
-st.header('GDP over time', divider='gray')
-
-''
-
-st.line_chart(
-    filtered_gdp_df,
-    x='Year',
-    y='GDP',
-    color='Country Code',
-)
-
-''
-''
+def process_video_vertical(input_path, output_path="viral_clip.mp4", start_t=30, end_t=60):
+    """Memotong video dan mengubah dimensinya menjadi vertikal (9:16)."""
+    if os.path.exists(output_path):
+        os.remove(output_path)
+        
+    try:
+        with VideoFileClip(input_path) as video:
+            # 1. Potong video (trim) berdasarkan detik
+            clip = video.subclip(start_t, end_t)
+            
+            # 2. Kalkulasi rasio untuk vertikal (9:16)
+            w, h = clip.size
+            target_ratio = 9 / 16
+            target_w = h * target_ratio
+            
+            # 3. Potong area tengah video (crop to center)
+            x_center = w / 2
+            x1 = x_center - (target_w / 2)
+            x2 = x_center + (target_w / 2)
+            
+            # Eksekusi pemotongan ruang & resize agar standar HD
+            clip_resized = clip.crop(x1=x1, y1=0, x2=x2, y2=h).resize(height=1920, width=1080)
+            
+            # 4. Render hasil akhir (Bisa memakan waktu tergantung CPU)
+            clip_resized.write_videofile(
+                output_path, 
+                codec="libx264", 
+                audio_codec="aac", 
+                preset="ultrafast", # Gunakan ultrafast agar proses di Streamlit tidak timeout
+                logger=None
+            )
+        return output_path
+    except Exception as e:
+        raise Exception(f"Gagal memproses video: {e}")
 
 
-first_year = gdp_df[gdp_df['Year'] == from_year]
-last_year = gdp_df[gdp_df['Year'] == to_year]
+# --- ANTARMUKA PENGGUNA (UI) ---
+with st.sidebar:
+    st.header("⚙️ Pengaturan Mesin")
+    openai_key = st.text_input("OpenAI API Key (Tahap Selanjutnya)", type="password")
+    target_start = st.number_input("Mulai Potong di Detik ke-", min_value=0, value=30)
+    target_end = st.number_input("Selesai di Detik ke-", min_value=10, value=45)
+    st.caption("Catatan: Di versi full, detik ini akan ditentukan otomatis oleh AI.")
 
-st.header(f'GDP in {to_year}', divider='gray')
+st.title("✂️ AutoClip AI Engine")
+st.markdown("Mesin pemotong video otomatis menjadi format vertikal.")
+st.markdown("---")
 
-''
+col_input, col_button = st.columns([4, 1])
 
-cols = st.columns(4)
+with col_input:
+    youtube_url = st.text_input("Tautan YouTube", placeholder="Masukkan link YouTube...", label_visibility="collapsed")
 
-for i, country in enumerate(selected_countries):
-    col = cols[i % len(cols)]
+with col_button:
+    generate_btn = st.button("🚀 Eksekusi Video")
 
-    with col:
-        first_gdp = first_year[first_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-        last_gdp = last_year[last_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-
-        if math.isnan(first_gdp):
-            growth = 'n/a'
-            delta_color = 'off'
-        else:
-            growth = f'{last_gdp / first_gdp:,.2f}x'
-            delta_color = 'normal'
-
-        st.metric(
-            label=f'{country} GDP',
-            value=f'{last_gdp:,.0f}B',
-            delta=growth,
-            delta_color=delta_color
-        )
+# --- LOGIKA EKSEKUSI (SAAT TOMBOL DITEKAN) ---
+if generate_btn:
+    if not youtube_url:
+        st.error("Masukkan tautan terlebih dahulu.")
+    else:
+        with st.status("Memproses Video... (Ini akan memakan waktu)", expanded=True) as status:
+            try:
+                # Langkah 1: Unduh
+                st.write("📥 Menghubungkan ke YouTube dan mengunduh video...")
+                raw_vid_path = download_youtube_video(youtube_url)
+                st.write("✅ Unduhan selesai!")
+                
+                # Langkah 2: Proses & Potong
+                st.write(f"✂️ Memotong video dari detik {target_start} ke {target_end} & mengubah ke rasio vertikal...")
+                final_vid_path = process_video_vertical(raw_vid_path, start_t=target_start, end_t=target_end)
+                st.write("✅ Rendering selesai!")
+                
+                status.update(label="Selesai! Video berhasil diproses.", state="complete", expanded=False)
+                
+                # Menampilkan Hasil
+                st.markdown("---")
+                st.subheader("🎥 Hasil Potongan Vertikal")
+                
+                res_col1, res_col2 = st.columns([1, 1.5])
+                
+                with res_col1:
+                    st.video(final_vid_path)
+                    
+                    # Tombol Download Asli
+                    with open(final_vid_path, "rb") as file:
+                        btn = st.download_button(
+                            label="⬇️ Unduh Video Vertikal (.mp4)",
+                            data=file,
+                            file_name="auto_viral_clip.mp4",
+                            mime="video/mp4",
+                            use_container_width=True
+                        )
+                
+                with res_col2:
+                    st.success("Logika inti berhasil dieksekusi!")
+                    st.markdown("""
+                    **Apa yang terjadi di balik layar?**
+                    1. `yt-dlp` berhasil menembus proteksi YouTube dan mengambil file mentah.
+                    2. `moviepy` secara akurat menghitung titik tengah video.
+                    3. Video di-*crop* membuang sisi kiri-kanan, dan di-*resize* ke resolusi standar sosial media (1080x1920).
+                    """)
+                    
+                    # Pembersihan memori file mentah agar server tidak penuh
+                    if os.path.exists(raw_vid_path):
+                        os.remove(raw_vid_path)
+                        
+            except Exception as error_msg:
+                status.update(label="Terjadi Kesalahan", state="error")
+                st.error(error_msg)
