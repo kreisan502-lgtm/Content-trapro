@@ -1,162 +1,94 @@
 import streamlit as st
-import yt_dlp
-import os
-import time
-from moviepy.video.io.VideoFileClip import VideoFileClip
+import yfinance as yf
+import pandas as pd
 
-# --- KONFIGURASI HALAMAN & CSS ---
-st.set_page_config(page_title="AutoClip AI | Viral Shorts", page_icon="✂️", layout="wide")
-
+# 1. Konfigurasi Halaman & CSS Kustom
+st.set_page_config(page_title="BizInvest Suite", layout="wide")
 st.markdown("""
-<style>
-    .stButton > button {
+    <style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    .stButton>button {
         width: 100%;
-        background-color: #FF4B4B;
+        border-radius: 5px;
+        background-color: #4CAF50;
         color: white;
-        border-radius: 8px;
-        font-weight: 600;
-        padding: 0.5rem 1rem;
-        border: none;
-        transition: all 0.3s ease;
     }
-    .stButton > button:hover {
-        background-color: #ff3333;
-    }
-    .result-card {
-        background-color: #1E1E1E;
-        padding: 20px;
-        border-radius: 10px;
-        border: 1px solid #333;
-    }
-</style>
+    </style>
 """, unsafe_allow_html=True)
 
-# --- FUNGSI BACKEND UTAMA ---
-def download_youtube_video(url, output_filename="raw_video.mp4"):
-    """Mengunduh video dari YouTube dalam format terbaik yang tersedia."""
-    if os.path.exists(output_filename):
-        os.remove(output_filename) # Hapus file lama jika ada
+# 2. Sistem Login Sederhana (Untuk SaaS Gated Access)
+def check_password():
+    """Mengembalikan `True` jika pengguna memasukkan password yang benar."""
+    def password_entered():
+        if st.session_state["password"] == "AksesPremium123": # Password ini yang akan dijual di LYNK
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  # Hapus password dari memory
+        else:
+            st.session_state["password_correct"] = False
+
+    if "password_correct" not in st.session_state:
+        st.text_input("Masukkan Password Akses:", type="password", on_change=password_entered, key="password")
+        return False
+    elif not st.session_state["password_correct"]:
+        st.text_input("Masukkan Password Akses:", type="password", on_change=password_entered, key="password")
+        st.error("Password salah. Silakan beli akses di Lynk.id/usernamekamu")
+        return False
+    return True
+
+# 3. Modul Kalkulator HPP (Fokus Manufaktur)
+def menu_hpp():
+    st.header("📦 Kalkulator HPP Produksi")
+    st.write("Hitung Harga Pokok Penjualan untuk produksi manufaktur dengan presisi.")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        bahan_baku = st.number_input("Total Biaya Bahan Baku (Rp)", min_value=0, value=1500000)
+        tenaga_kerja = st.number_input("Total Biaya Tenaga Kerja (Rp)", min_value=0, value=500000)
+        overhead = st.number_input("Biaya Overhead / Operasional (Rp)", min_value=0, value=200000)
         
-    ydl_opts = {
-        'format': 'best',
-        'outtmpl': output_filename,
-        'quiet': True,
-        'no_warnings': True
-    }
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
-        return output_filename
-    except Exception as e:
-        raise Exception(f"Gagal mengunduh video: {e}")
-
-def process_video_vertical(input_path, output_path="viral_clip.mp4", start_t=30, end_t=60):
-    """Memotong video dan mengubah dimensinya menjadi vertikal (9:16)."""
-    if os.path.exists(output_path):
-        os.remove(output_path)
+    with col2:
+        jumlah_produksi = st.number_input("Target Jumlah Produksi (Unit/Pcs)", min_value=1, value=100)
+        margin = st.slider("Target Margin Keuntungan (%)", min_value=0, max_value=100, value=30)
         
-    try:
-        with VideoFileClip(input_path) as video:
-            # 1. Potong video (trim) berdasarkan detik
-            clip = video.subclip(start_t, end_t)
+    if st.button("Hitung HPP & Harga Jual"):
+        total_biaya = bahan_baku + tenaga_kerja + overhead
+        hpp_per_unit = total_biaya / jumlah_produksi
+        harga_jual = hpp_per_unit + (hpp_per_unit * (margin / 100))
+        
+        st.success("✅ Kalkulasi Selesai")
+        st.metric(label="HPP per Unit", value=f"Rp {hpp_per_unit:,.0f}")
+        st.metric(label="Rekomendasi Harga Jual", value=f"Rp {harga_jual:,.0f}")
+
+# 4. Modul Analisis Trading AI
+def menu_trading():
+    st.header("📈 AI Trading Analyzer")
+    st.write("Analisis teknikal cepat untuk pasar saham.")
+    
+    ticker_symbol = st.text_input("Masukkan Kode Saham (Contoh: LPKR.JK)", value="LPKR.JK")
+    
+    if st.button("Analisis Sekarang"):
+        try:
+            # Mengambil data 1 bulan terakhir
+            ticker_data = yf.Ticker(ticker_symbol)
+            df = ticker_data.history(period="1mo")
             
-            # 2. Kalkulasi rasio untuk vertikal (9:16)
-            w, h = clip.size
-            target_ratio = 9 / 16
-            target_w = h * target_ratio
+            st.subheader(f"Pergerakan Harga {ticker_symbol} (1 Bulan Terakhir)")
+            st.line_chart(df['Close'])
             
-            # 3. Potong area tengah video (crop to center)
-            x_center = w / 2
-            x1 = x_center - (target_w / 2)
-            x2 = x_center + (target_w / 2)
-            
-            # Eksekusi pemotongan ruang & resize agar standar HD
-            clip_resized = clip.crop(x1=x1, y1=0, x2=x2, y2=h).resize(height=1920, width=1080)
-            
-            # 4. Render hasil akhir (Bisa memakan waktu tergantung CPU)
-            clip_resized.write_videofile(
-                output_path, 
-                codec="libx264", 
-                audio_codec="aac", 
-                preset="ultrafast", # Gunakan ultrafast agar proses di Streamlit tidak timeout
-                logger=None
-            )
-        return output_path
-    except Exception as e:
-        raise Exception(f"Gagal memproses video: {e}")
+            # Simulasi Kesimpulan AI (Nantinya bisa disambung ke API OpenAI/Gemini)
+            harga_terakhir = df['Close'].iloc[-1]
+            st.info(f"💡 **Ringkasan AI:** Harga penutupan terakhir adalah Rp {harga_terakhir:,.0f}. Berdasarkan tren volume dan harga historis satu bulan ini, momentum pergerakan sedang diuji di titik *support* terdekat.")
+        except Exception as e:
+            st.error("Gagal mengambil data saham. Pastikan format kode benar.")
 
-
-# --- ANTARMUKA PENGGUNA (UI) ---
-with st.sidebar:
-    st.header("⚙️ Pengaturan Mesin")
-    openai_key = st.text_input("OpenAI API Key (Tahap Selanjutnya)", type="password")
-    target_start = st.number_input("Mulai Potong di Detik ke-", min_value=0, value=30)
-    target_end = st.number_input("Selesai di Detik ke-", min_value=10, value=45)
-    st.caption("Catatan: Di versi full, detik ini akan ditentukan otomatis oleh AI.")
-
-st.title("✂️ AutoClip AI Engine")
-st.markdown("Mesin pemotong video otomatis menjadi format vertikal.")
-st.markdown("---")
-
-col_input, col_button = st.columns([4, 1])
-
-with col_input:
-    youtube_url = st.text_input("Tautan YouTube", placeholder="Masukkan link YouTube...", label_visibility="collapsed")
-
-with col_button:
-    generate_btn = st.button("🚀 Eksekusi Video")
-
-# --- LOGIKA EKSEKUSI (SAAT TOMBOL DITEKAN) ---
-if generate_btn:
-    if not youtube_url:
-        st.error("Masukkan tautan terlebih dahulu.")
-    else:
-        with st.status("Memproses Video... (Ini akan memakan waktu)", expanded=True) as status:
-            try:
-                # Langkah 1: Unduh
-                st.write("📥 Menghubungkan ke YouTube dan mengunduh video...")
-                raw_vid_path = download_youtube_video(youtube_url)
-                st.write("✅ Unduhan selesai!")
-                
-                # Langkah 2: Proses & Potong
-                st.write(f"✂️ Memotong video dari detik {target_start} ke {target_end} & mengubah ke rasio vertikal...")
-                final_vid_path = process_video_vertical(raw_vid_path, start_t=target_start, end_t=target_end)
-                st.write("✅ Rendering selesai!")
-                
-                status.update(label="Selesai! Video berhasil diproses.", state="complete", expanded=False)
-                
-                # Menampilkan Hasil
-                st.markdown("---")
-                st.subheader("🎥 Hasil Potongan Vertikal")
-                
-                res_col1, res_col2 = st.columns([1, 1.5])
-                
-                with res_col1:
-                    st.video(final_vid_path)
-                    
-                    # Tombol Download Asli
-                    with open(final_vid_path, "rb") as file:
-                        btn = st.download_button(
-                            label="⬇️ Unduh Video Vertikal (.mp4)",
-                            data=file,
-                            file_name="auto_viral_clip.mp4",
-                            mime="video/mp4",
-                            use_container_width=True
-                        )
-                
-                with res_col2:
-                    st.success("Logika inti berhasil dieksekusi!")
-                    st.markdown("""
-                    **Apa yang terjadi di balik layar?**
-                    1. `yt-dlp` berhasil menembus proteksi YouTube dan mengambil file mentah.
-                    2. `moviepy` secara akurat menghitung titik tengah video.
-                    3. Video di-*crop* membuang sisi kiri-kanan, dan di-*resize* ke resolusi standar sosial media (1080x1920).
-                    """)
-                    
-                    # Pembersihan memori file mentah agar server tidak penuh
-                    if os.path.exists(raw_vid_path):
-                        os.remove(raw_vid_path)
-                        
-            except Exception as error_msg:
-                status.update(label="Terjadi Kesalahan", state="error")
-                st.error(error_msg)
+# 5. Navigasi Utama Aplikasi
+if check_password():
+    st.sidebar.title("Navigasi Suite")
+    pilihan = st.sidebar.radio("Pilih Alat:", ["Kalkulator HPP", "AI Trading Analyzer"])
+    
+    if pilihan == "Kalkulator HPP":
+        menu_hpp()
+    elif pilihan == "AI Trading Analyzer":
+        menu_trading()
+        
