@@ -72,7 +72,7 @@ def generate_ai_report(ticker, df, info):
     beta = info.get('beta', 1.0)
     
     laporan = f"**Laporan AI untuk {ticker}:**\n\n"
-    laporan += "Berdsarkan pemindaian algoritma kami, "
+    laporan += "Berdasarkan pemindaian algoritma kami, "
     
     if rsi > 70: laporan += "aset ini saat ini menunjukkan tanda-tanda **Jenuh Beli (Overbought)**. Banyak investor yang telah meraup keuntungan, sehingga risiko koreksi atau penurunan harga dalam jangka pendek sangat tinggi. "
     elif rsi < 30: laporan += "aset ini berada di area **Jenuh Jual (Oversold)**. Ini menandakan kepanikan pasar berlebihan, dan sering kali menjadi area *support* kuat untuk memantul naik. "
@@ -221,3 +221,4 @@ if check_password():
             
     elif st.session_state['page'] == 'trading': menu_trading()
     elif st.session_state['page'] == 'hpp': menu_hpp()
+        
